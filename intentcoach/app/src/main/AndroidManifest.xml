@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      PERMISSION NOTES (read before publishing):
+
+      PACKAGE_USAGE_STATS  -> "usage access". Special permission; user grants it in
+                              Settings, not via a normal dialog. Lets us read which app
+                              is in the foreground. This is the MVP detection route and
+                              carries LOWER Play Store review risk than AccessibilityService.
+
+      SYSTEM_ALERT_WINDOW  -> "draw over other apps". Lets us paint the interrupt screen
+                              on top of Instagram/etc. User grants via a Settings toggle.
+
+      QUERY_ALL_PACKAGES   -> only needed if you later list ALL installed apps (the
+                              "App Prioritizer" feature). It is a RESTRICTED permission:
+                              you must file a Play Console declaration and have a core
+                              purpose. For the MVP you do NOT need it — you only watch a
+                              short user-chosen list of apps, so it is commented out.
+
+      FOREGROUND_SERVICE    -> keeps the detection service alive reliably.
+    -->
+
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions"
+        xmlns:tools="http://schemas.android.com/tools" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" /> -->
+
+    <application
+        android:name=".IntentCoachApp"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.IntentCoach">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Transparent activity used to render the interrupt screen as an overlay -->
+        <activity
+            android:name=".overlay.InterruptActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:theme="@style/Theme.IntentCoach.Transparent" />
+
+        <service
+            android:name=".detection.AppWatchService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Monitors foreground app to show a mindfulness interrupt chosen by the user" />
+        </service>
+
+        <receiver
+            android:name=".detection.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>
