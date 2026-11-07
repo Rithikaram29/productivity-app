@@ -16,7 +16,8 @@
                               "App Prioritizer" feature). It is a RESTRICTED permission:
                               you must file a Play Console declaration and have a core
                               purpose. For the MVP you do NOT need it — you only watch a
-                              short user-chosen list of apps, so it is commented out.
+                              short user-chosen list of apps, so it is commented out. The
+                              picker lists launchable apps via the <queries> intents below.
 
       FOREGROUND_SERVICE    -> keeps the detection service alive reliably.
 
@@ -44,37 +45,26 @@
     <!--
       PACKAGE VISIBILITY (Android 11 / API 30+).
 
-      Since API 30 an app cannot see other installed packages unless it declares them
-      here. Without this block getApplicationInfo() throws NameNotFoundException for
-      apps that ARE installed, so the picker showed an empty list and every screen fell
-      back to guessing names from the package string ("Frontpage" instead of "Reddit").
+      Since API 30 an app cannot see other installed packages unless it declares what it
+      needs here. We declare two INTENTS, not a blanket permission:
+        - MAIN + LAUNCHER  -> every app that has a home-screen icon, so the picker can
+                              list them (AppsRepository.launchableApps).
+        - VIEW https       -> which of those are browsers, for the "Browsing" group.
 
-      Declaring specific packages is the sanctioned alternative to QUERY_ALL_PACKAGES —
-      no Play Console declaration needed. Keep this list in sync with
-      WatchedApps.CATALOG: an app missing here is invisible to us even when installed.
+      This is the sanctioned alternative to QUERY_ALL_PACKAGES: an intent-scoped query is
+      not a restricted permission and needs no Play Console declaration. Apps without a
+      launcher icon stay invisible to us, which is fine — nobody opens those by reflex.
     -->
     <queries>
-        <package android:name="com.instagram.android" />
-        <package android:name="com.zhiliaoapp.musically" />
-        <package android:name="com.google.android.youtube" />
-        <package android:name="com.twitter.android" />
-        <package android:name="com.reddit.frontpage" />
-        <package android:name="com.facebook.katana" />
-        <package android:name="com.snapchat.android" />
-        <package android:name="com.instagram.barcelona" />
-        <package android:name="com.whatsapp" />
-        <package android:name="org.telegram.messenger" />
-        <package android:name="com.discord" />
-        <package android:name="com.linkedin.android" />
-        <package android:name="com.pinterest" />
-        <package android:name="com.quora.android" />
-        <package android:name="tv.twitch.android.app" />
-        <package android:name="com.netflix.mediaclient" />
-        <package android:name="com.amazon.avod.thirdpartyclient" />
-        <package android:name="in.startv.hotstar" />
-        <package android:name="com.spotify.music" />
-        <package android:name="com.amazon.mShop.android.shopping" />
-        <package android:name="com.flipkart.android" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
     </queries>
 
     <application
@@ -112,7 +102,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Monitors foreground app to show a mindfulness interrupt chosen by the user" />
+                android:value="Detects when an app the user chose comes to the foreground, to show a user-requested intention check-in, and measures how long it stays on screen. Data stays on device." />
         </service>
 
         <receiver

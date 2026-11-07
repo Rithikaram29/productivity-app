@@ -1,5 +1,8 @@
 # IntentCoach → testable v1 — execution plan
 
+> **Superseded 2026-11-07** by `docs/AUDIT_AND_PLAN.md` and `docs/DELIVERY.md` (MVP v0.2.0).
+> Kept for history.
+
 > **Status: all 9 brief tasks are done, executed serially rather than in waves** (the
 > brief asked for one task at a time with a diff after each). Tasks 1–9 landed as
 > described below; the wave structure is kept as the template for the next batch of work.

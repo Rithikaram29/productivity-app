@@ -5,14 +5,18 @@ import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 /**
  * A single focus (pomodoro) session, recorded when it completes or is cut short.
  *
- * Like [IntentLog], these rows never leave the device. The reward system, the streak, and
- * the companion's mood are all derived from this ONE table — there is no separately stored
- * "warmth balance" anywhere. That mirrors how the insights numbers are folded out of
- * intent_log: a single source of truth, so nothing can drift out of sync.
+ * Like the app sessions, these rows never leave the device. The reward system, the streak,
+ * and the companion's mood are all derived from this ONE table — there is no separately
+ * stored "warmth balance" anywhere. A single source of truth, so nothing can drift.
+ *
+ * The session's "completion status" in the product spec is [outcome]. A running timer is
+ * NOT a row here — it lives in [Settings] as timestamps (see domain/FocusTimer.kt), so a
+ * row only ever describes a finished session.
  */
 
 enum class SessionOutcome {
@@ -31,10 +35,12 @@ data class FocusSession(
     /** How long they actually focused before it ended, in milliseconds. */
     val actualMs: Long,
     val outcome: SessionOutcome,
-    /** Optional one-line intent, e.g. "Finishing the design review". */
+    /** Optional one-line intent, or the custom category's name. */
     val label: String = "",
     val startedAt: Long,
-    val endedAt: Long = System.currentTimeMillis()
+    val endedAt: Long = System.currentTimeMillis(),
+    /** Added in DB v3; older rows were migrated as WORK. */
+    val category: FocusCategory = FocusCategory.WORK
 )
 
 @Dao
@@ -51,4 +57,8 @@ interface FocusSessionDao {
 
     @Query("SELECT COUNT(*) FROM focus_session WHERE outcome = 'COMPLETED' AND endedAt >= :since")
     suspend fun completedSince(since: Long): Int
+
+    /** Live version for the screens: Room re-emits whenever focus_session changes. */
+    @Query("SELECT * FROM focus_session ORDER BY endedAt DESC")
+    fun observeAll(): Flow<List<FocusSession>>
 }

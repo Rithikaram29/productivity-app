@@ -15,124 +15,142 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
-import com.intentcoach.app.data.WatchedApps
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.intentcoach.app.AppContainer
+import com.intentcoach.app.data.AppCategory
+import com.intentcoach.app.data.InstalledApp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/**
- * Lets the user choose which apps trigger the interrupt.
- *
- * Only shows apps from WatchedApps.CATALOG that are actually installed here — see
- * WatchedApps.installed() for why the list is curated rather than enumerated.
- */
+class AppPickerViewModel(private val c: AppContainer) : ViewModel() {
+    private val _installed = MutableStateFlow<List<InstalledApp>?>(null)
+    /** null while loading. */
+    val installed: StateFlow<List<InstalledApp>?> = _installed.asStateFlow()
+
+    val selected: StateFlow<Set<String>> = c.apps.observeAll()
+        .map { list -> list.filter { it.isEnabled }.map { it.packageName }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    init {
+        viewModelScope.launch { _installed.value = c.apps.launchableApps() }
+    }
+
+    fun toggle(app: InstalledApp, on: Boolean) {
+        // appScope: the write must land even if the user leaves the screen straight away.
+        c.appScope.launch { c.apps.setMonitored(app, on) }
+    }
+}
+
+/** Standalone screen (from Settings / Home). */
 @Composable
 fun AppPickerScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
+    Column(Modifier.fillMaxSize().background(Ink).padding(horizontal = 20.dp, vertical = 16.dp)) {
+        ScreenTitle(
+            "Which apps should ask first?",
+            "We'll only check in for the ones you pick. Everything else opens as normal."
+        )
+        Spacer(Modifier.height(12.dp))
+        AppPickerContent(Modifier.weight(1f))
+        Spacer(Modifier.height(12.dp))
+        PrimaryButton("Done", onClick = onBack)
+    }
+}
 
-    // Both of these touch the PackageManager / SharedPreferences, which is disk I/O.
-    // remember(Unit) runs them once when the screen appears instead of on every
-    // recomposition (and a recomposition happens on every single tap below).
-    val apps = remember { WatchedApps.installed(context) }
-    var selected by remember { mutableStateOf(WatchedApps.get(context)) }
+/**
+ * The list itself, also embedded in onboarding. Lists launchable apps only, grouped by a
+ * suggested category. Nothing is selected unless the user selects it.
+ */
+@Composable
+fun AppPickerContent(modifier: Modifier = Modifier) {
+    val vm = appViewModel { AppPickerViewModel(it) }
+    val installed by vm.installed.collectAsState()
+    val selected by vm.selected.collectAsState()
+    var query by remember { mutableStateOf("") }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Ink)
-            .padding(24.dp)
-    ) {
-        Spacer(Modifier.height(16.dp))
-        Text("Which apps should ask?", color = Cream, fontSize = 24.sp, fontWeight = FontWeight.Medium)
+    Column(modifier) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text("Search apps", color = Muted) },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Field, unfocusedContainerColor = Field,
+                focusedTextColor = Cream, unfocusedTextColor = Cream,
+                focusedBorderColor = Lime, unfocusedBorderColor = FieldBorder
+            ),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(8.dp))
         Text(
-            "We'll only interrupt for the ones you pick. Everything else opens as normal.",
-            color = Muted, fontSize = 14.sp, lineHeight = 20.sp
+            if (selected.size == 1) "1 app selected" else "${selected.size} apps selected",
+            color = Muted, fontSize = 13.sp
         )
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(8.dp))
 
-        if (apps.isEmpty()) {
-            // Possible on a clean device or an emulator: none of the catalog is installed.
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(
-                    "None of the apps we know about are installed on this phone yet.",
-                    color = Muted, fontSize = 15.sp, lineHeight = 22.sp
-                )
+        val list = installed
+        when {
+            list == null -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Lime)
             }
-        } else {
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(apps, key = { it.packageName }) { app ->
-                    AppRow(
-                        packageName = app.packageName,
-                        fallbackName = app.displayName,
-                        checked = app.packageName in selected,
-                        onToggle = { isOn ->
-                            // Rebuild the set rather than mutating it: Compose only
-                            // recomposes when the state object itself changes identity.
-                            selected = if (isOn) selected + app.packageName
-                                       else selected - app.packageName
-                            // Write through immediately — the service reads this from
-                            // SharedPreferences on its next poll, so there is no
-                            // "save" step to forget.
-                            WatchedApps.set(context, selected)
+            list.isEmpty() -> Text("No apps found.", color = Muted, fontSize = 15.sp)
+            else -> {
+                val filtered = list.filter { query.isBlank() || it.label.contains(query.trim(), ignoreCase = true) }
+                val groups = AppCategory.entries.mapNotNull { cat ->
+                    filtered.filter { it.category == cat }.takeIf { it.isNotEmpty() }?.let { cat to it }
+                }
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    groups.forEach { (cat, apps) ->
+                        item(key = "cat-${cat.name}") { SectionLabel(cat.label) }
+                        items(apps, key = { it.packageName }) { app ->
+                            AppRow(app, checked = app.packageName in selected, onToggle = { vm.toggle(app, it) })
                         }
-                    )
+                    }
                 }
             }
         }
-
-        Spacer(Modifier.height(16.dp))
-        Button(
-            onClick = onBack,
-            colors = ButtonDefaults.buttonColors(containerColor = Accent),
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth().height(52.dp)
-        ) { Text("Done", color = Cream, fontSize = 16.sp, fontWeight = FontWeight.Medium) }
     }
 }
 
 @Composable
-private fun AppRow(
-    packageName: String,
-    fallbackName: String,
-    checked: Boolean,
-    onToggle: (Boolean) -> Unit
-) {
+private fun AppRow(app: InstalledApp, checked: Boolean, onToggle: (Boolean) -> Unit) {
     val context = LocalContext.current
+    // Icons are decoded off the main thread, once per package: produceState starts null
+    // (draw a placeholder) and fills in when ready, so scrolling never stalls on decoding.
+    val icon by produceState<ImageBitmap?>(initialValue = null, app.packageName) {
+        value = withContext(Dispatchers.IO) { loadIcon(context.packageManager, app.packageName) }
+    }
 
-    // Icon and label come from the device so they match what the user sees on their
-    // home screen. Keyed on packageName so the lookup is not repeated per recomposition.
-    val details = remember(packageName) { loadAppDetails(context.packageManager, packageName, fallbackName) }
-
-    Surface(
-        color = Field,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    Surface(color = Field, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val icon = details.icon
-            if (icon != null) {
-                Image(
-                    bitmap = icon,
-                    contentDescription = null, // the label beside it already says the name
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(36.dp)
-                )
+            val bmp = icon
+            if (bmp != null) {
+                Image(bitmap = bmp, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(36.dp))
             } else {
                 Box(Modifier.size(36.dp).background(FieldBorder, RoundedCornerShape(8.dp)))
             }
             Spacer(Modifier.width(14.dp))
-            Text(details.label, color = Cream, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            Text(app.label, color = Cream, fontSize = 15.sp, modifier = Modifier.weight(1f))
             Switch(
                 checked = checked,
                 onCheckedChange = onToggle,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = Cream,
-                    checkedTrackColor = Accent,
+                    checkedThumbColor = Ink,
+                    checkedTrackColor = Lime,
                     uncheckedThumbColor = Muted,
                     uncheckedTrackColor = FieldBorder,
                     uncheckedBorderColor = FieldBorder
@@ -142,20 +160,10 @@ private fun AppRow(
     }
 }
 
-private class AppDetails(val label: String, val icon: ImageBitmap?)
-
-/**
- * Both lookups can throw NameNotFoundException if the app is uninstalled between the
- * installed() scan and this row being drawn — rare, but a crash if unhandled, so we fall
- * back to the catalog's display name.
- */
-private fun loadAppDetails(pm: PackageManager, packageName: String, fallbackName: String): AppDetails = try {
-    val info = pm.getApplicationInfo(packageName, 0)
-    val label = pm.getApplicationLabel(info).toString()
-    // Adaptive icons have no meaningful intrinsic size, so ask for explicit pixels
-    // rather than letting toBitmap() guess.
-    val icon = pm.getApplicationIcon(info).toBitmap(width = 144, height = 144).asImageBitmap()
-    AppDetails(label, icon)
+/** Can throw if the app is uninstalled mid-scroll — rare, but then we just show no icon. */
+private fun loadIcon(pm: PackageManager, packageName: String): ImageBitmap? = try {
+    // Adaptive icons have no meaningful intrinsic size, so ask for explicit pixels.
+    pm.getApplicationIcon(packageName).toBitmap(width = 144, height = 144).asImageBitmap()
 } catch (e: PackageManager.NameNotFoundException) {
-    AppDetails(fallbackName, null)
+    null
 }

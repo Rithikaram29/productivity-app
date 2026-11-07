@@ -3,29 +3,25 @@ package com.intentcoach.app.data
 import android.content.Context
 
 /**
- * The short list of apps the user wants to be interrupted for.
- * Kept deliberately small — you do NOT need to enumerate every installed app
- * (which would trigger the restricted QUERY_ALL_PACKAGES permission).
- * The user picks a handful of known distracting apps and we watch only those.
+ * LEGACY (v0.1) watch list, plus the curated catalog of well-known apps.
+ *
+ * Since DB v3 the user's choices live in the `monitored_app` table (see AppsRepository),
+ * and the picker lists every launchable app via a launcher-intent `<queries>` entry — still
+ * without the restricted QUERY_ALL_PACKAGES permission.
+ *
+ * What remains here and why:
+ *  - [CATALOG] gives known apps a friendly name and a reliable category (AppCategorizer).
+ *  - [get]/[hasExplicitSelection] let AppsRepository carry a v0.1 user's picks across once.
+ *    The DEFAULTS are only ever used by that legacy reader: a fresh v3 install monitors
+ *    nothing until the user chooses.
  */
 object WatchedApps {
-    private const val PREFS = "watched_apps"
+    const val PREFS = "watched_apps"
     private const val KEY = "packages"
 
     /** One entry in the curated catalog: a package we know by name, and what to call it. */
     data class KnownApp(val packageName: String, val displayName: String)
 
-    /**
-     * The curated catalog the picker offers.
-     *
-     * Why a hardcoded list instead of "every app on the phone": listing all installed
-     * packages requires QUERY_ALL_PACKAGES, a restricted permission needing a Play
-     * Console declaration. Asking about a *specific, known* package needs no permission
-     * at all — so we ship the list of usual suspects and check each one individually.
-     *
-     * The cost is that an app missing from this list cannot be watched. That is the
-     * trade we are making on purpose; widen the list rather than widen the permission.
-     */
     val CATALOG = listOf(
         KnownApp("com.instagram.android", "Instagram"),
         KnownApp("com.zhiliaoapp.musically", "TikTok"),
@@ -50,7 +46,7 @@ object WatchedApps {
         KnownApp("com.flipkart.android", "Flipkart")
     )
 
-    // Sensible defaults so the app does something on first run.
+    // v0.1 defaults. Only reachable through the legacy reader below.
     private val DEFAULTS = setOf(
         "com.instagram.android",
         "com.zhiliaoapp.musically", // TikTok
@@ -72,14 +68,20 @@ object WatchedApps {
     fun isWatched(context: Context, pkg: String): Boolean = get(context).contains(pkg)
 
     /**
+     * True only if the user actually saved a selection in v0.1. Without this, migrating
+     * would silently turn the five DEFAULTS into real monitored apps — exactly the
+     * "monitor by default" behaviour the product rules out.
+     */
+    fun hasExplicitSelection(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).contains(KEY)
+
+    fun displayNameFor(pkg: String): String? = CATALOG.firstOrNull { it.packageName == pkg }?.displayName
+
+    /**
      * The catalog entries that actually exist on this device.
      *
      * getApplicationInfo() throws NameNotFoundException for anything not installed —
      * that exception IS the answer, so the try/catch is the lookup, not error handling.
-     * One call per known package, which is what keeps us clear of QUERY_ALL_PACKAGES.
-     *
-     * Hits the PackageManager once per catalog entry, so call it off the composition
-     * (inside remember/LaunchedEffect), not on every recomposition.
      */
     fun installed(context: Context): List<KnownApp> {
         val pm = context.packageManager
