@@ -70,8 +70,7 @@ small follow-up), focus-completion notification while the app is closed.
 **Removed (replaced):** `data/IntentLog.kt`, `data/Stats.kt`, `test/.../StatsTest.kt`.
 
 ## 5. Dependencies added
-`androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4`, `androidx.lifecycle:lifecycle-runtime-compose:2.8.4`
-(only the ViewModel one is used; runtime-compose can be removed if unwanted). No network, analytics or DI
+`androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4` (one dependency). No network, analytics or DI
 libraries. KSP arg `room.schemaLocation` added. versionCode 2 / versionName 0.2.0.
 
 > Note: `collectAsStateWithLifecycle` was deliberately **not** used — lifecycle 2.8 expects Compose UI

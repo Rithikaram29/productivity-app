@@ -49,10 +49,10 @@ ksp {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
-    // ViewModels for Compose screens, and collectAsStateWithLifecycle(). Same 2.8.4 line
-    // as lifecycle-runtime-ktx above, so no version skew.
+    // ViewModels for Compose screens. Same 2.8.4 line as lifecycle-runtime-ktx above, so no
+    // version skew. (Not lifecycle-runtime-compose: its collectAsStateWithLifecycle expects
+    // Compose UI 1.7, and the BOM below is Compose 1.6.8.)
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.1")
     // 2.7.x is the last line built against Kotlin 1.9, which this project uses.
     implementation("androidx.navigation:navigation-compose:2.7.7")
