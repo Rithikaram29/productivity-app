@@ -10,6 +10,10 @@ class IntentCoachApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        db = Room.databaseBuilder(this, AppDatabase::class.java, "intentcoach.db").build()
+        db = Room.databaseBuilder(this, AppDatabase::class.java, "intentcoach.db")
+            // v1 -> v2 adds focus_session. A real migration (not destructive) so any
+            // intent_log history already on the device survives the upgrade.
+            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .build()
     }
 }

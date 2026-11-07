@@ -7,10 +7,13 @@ import android.app.Service
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import com.intentcoach.app.data.Settings
 import com.intentcoach.app.data.WatchedApps
 import com.intentcoach.app.overlay.InterruptActivity
 
@@ -49,8 +52,32 @@ class AppWatchService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        startForeground(NOTIF_ID, buildNotification())
+        startForegroundCompat()
         handler.post(poller)
+    }
+
+    /**
+     * Why this branch exists:
+     *
+     * minSdk is 26, but the "specialUse" foreground-service type — and its companion
+     * permission FOREGROUND_SERVICE_SPECIAL_USE — only exist on API 34+.
+     *
+     *   - On API 34+ (targetSdk 35), the platform REQUIRES the service type to be passed
+     *     to startForeground(). Omit it and you get MissingForegroundServiceTypeException,
+     *     which kills the service the instant it starts.
+     *   - Below API 34 that type constant does not exist on the device at all. The plain
+     *     two-argument startForeground() is the only correct call, and the manifest's
+     *     foregroundServiceType attribute is simply ignored by those platforms.
+     *
+     * So: same service, two different start contracts, chosen at runtime.
+     */
+    private fun startForegroundCompat() {
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34
+            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIF_ID, notification)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -65,6 +92,13 @@ class AppWatchService : Service() {
     private fun checkForeground() {
         val current = currentForegroundApp() ?: return
 
+        // Our own interrupt screen must be fully transparent to this logic.
+        // Previously the reset below ran while InterruptActivity was foreground,
+        // clearing interruptShownFor — so proceeding into the watched app
+        // re-triggered the interrupt in an endless loop. Bail out first, and
+        // leave lastForegroundPackage/interruptShownFor untouched.
+        if (current == packageName) return
+
         // Reset the "already interrupted" flag once the user leaves the watched app.
         if (current != interruptShownFor) {
             interruptShownFor = null
@@ -74,7 +108,6 @@ class AppWatchService : Service() {
         lastForegroundPackage = current
 
         if (!changed) return
-        if (current == packageName) return // ignore our own app
         if (!WatchedApps.isWatched(this, current)) return
         if (current == interruptShownFor) return // don't loop
 
@@ -128,9 +161,23 @@ class AppWatchService : Service() {
         private const val CHANNEL_ID = "intent_coach_service"
         private const val NOTIF_ID = 1
 
+        /**
+         * Starting and stopping both record the user's choice in Settings, so the flag
+         * and the service can never drift apart — whoever calls start()/stop() does not
+         * have to remember to write it, and BootReceiver reads it back after a reboot.
+         */
         fun start(context: Context) {
+            Settings.setEnabled(context, true)
             val i = Intent(context, AppWatchService::class.java)
             context.startForegroundService(i)
+        }
+
+        fun stop(context: Context) {
+            Settings.setEnabled(context, false)
+            // stopService() beats stopSelf() here: it also cancels the START_STICKY
+            // contract, so the system will not resurrect the service after the user
+            // has explicitly turned it off.
+            context.stopService(Intent(context, AppWatchService::class.java))
         }
     }
 }

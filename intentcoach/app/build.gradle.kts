@@ -31,12 +31,21 @@ android {
 
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+
+    testOptions {
+        unitTests {
+            // Robolectric needs the merged resources/manifest to build its fake Android.
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.1")
+    // 2.7.x is the last line built against Kotlin 1.9, which this project uses.
+    implementation("androidx.navigation:navigation-compose:2.7.7")
 
     val composeBom = platform("androidx.compose:compose-bom:2024.08.00")
     implementation(composeBom)
@@ -50,4 +59,11 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    // JVM unit tests only — no instrumented tests in this project.
+    testImplementation("junit:junit:4.13.2")
+    // Robolectric gives SharedPreferences-backed code a real Context on the JVM.
+    // Anything that does not need a Context is tested as a plain JUnit test instead.
+    testImplementation("org.robolectric:robolectric:4.12.2")
+    testImplementation("androidx.test:core-ktx:1.6.1")
 }

@@ -19,6 +19,13 @@
                               short user-chosen list of apps, so it is commented out.
 
       FOREGROUND_SERVICE    -> keeps the detection service alive reliably.
+
+      SDK GATING            -> minSdk is 26, but two of the declarations below only
+                              exist on newer platforms: FOREGROUND_SERVICE_SPECIAL_USE
+                              is API 34+, POST_NOTIFICATIONS is API 33+. They carry
+                              android:minSdkVersion so older devices never see a
+                              permission their platform cannot resolve. The matching
+                              runtime branch is in AppWatchService.startForegroundCompat().
     -->
 
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -26,11 +33,49 @@
         xmlns:tools="http://schemas.android.com/tools" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        android:minSdkVersion="34" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
+        android:minSdkVersion="33" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" /> -->
+
+    <!--
+      PACKAGE VISIBILITY (Android 11 / API 30+).
+
+      Since API 30 an app cannot see other installed packages unless it declares them
+      here. Without this block getApplicationInfo() throws NameNotFoundException for
+      apps that ARE installed, so the picker showed an empty list and every screen fell
+      back to guessing names from the package string ("Frontpage" instead of "Reddit").
+
+      Declaring specific packages is the sanctioned alternative to QUERY_ALL_PACKAGES —
+      no Play Console declaration needed. Keep this list in sync with
+      WatchedApps.CATALOG: an app missing here is invisible to us even when installed.
+    -->
+    <queries>
+        <package android:name="com.instagram.android" />
+        <package android:name="com.zhiliaoapp.musically" />
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.twitter.android" />
+        <package android:name="com.reddit.frontpage" />
+        <package android:name="com.facebook.katana" />
+        <package android:name="com.snapchat.android" />
+        <package android:name="com.instagram.barcelona" />
+        <package android:name="com.whatsapp" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.discord" />
+        <package android:name="com.linkedin.android" />
+        <package android:name="com.pinterest" />
+        <package android:name="com.quora.android" />
+        <package android:name="tv.twitch.android.app" />
+        <package android:name="com.netflix.mediaclient" />
+        <package android:name="com.amazon.avod.thirdpartyclient" />
+        <package android:name="in.startv.hotstar" />
+        <package android:name="com.spotify.music" />
+        <package android:name="com.amazon.mShop.android.shopping" />
+        <package android:name="com.flipkart.android" />
+    </queries>
 
     <application
         android:name=".IntentCoachApp"
@@ -57,6 +102,10 @@
             android:launchMode="singleInstance"
             android:theme="@style/Theme.IntentCoach.Transparent" />
 
+        <!--
+          foregroundServiceType is only read by API 34+. Older platforms ignore the
+          attribute entirely, which is why it is safe to leave declared at minSdk 26.
+        -->
         <service
             android:name=".detection.AppWatchService"
             android:exported="false"

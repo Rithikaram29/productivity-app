@@ -178,12 +178,36 @@ private fun AskStage(
         }
 
         Spacer(Modifier.height(16.dp))
+        // Was a silent no-op when the field was empty: the tap hit a
+        // isNotBlank() guard with no feedback. Reflect that state in the button.
+        val canContinue = intentText.isNotBlank()
         Button(
             onClick = onContinue,
-            colors = ButtonDefaults.buttonColors(containerColor = Accent),
+            enabled = canContinue,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Accent,
+                disabledContainerColor = Field,
+                disabledContentColor = Muted
+            ),
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth().height(52.dp)
-        ) { Text("Continue anyway", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium) }
+        ) {
+            Text(
+                "Continue anyway",
+                color = if (canContinue) Color.White else Muted,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        if (!canContinue) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Type what you meant to do, or pick one above.",
+                color = Muted,
+                fontSize = 13.sp,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+        }
     }
 }
 
