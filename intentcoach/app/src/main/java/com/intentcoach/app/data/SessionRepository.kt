@@ -18,7 +18,9 @@ import kotlinx.coroutines.sync.withLock
  */
 class SessionRepository(
     private val db: AppDatabase,
-    private val usage: UsageRepository
+    private val usage: UsageRepository,
+    /** IntentCoach's own package: time on our screens (popups) never ends a session. */
+    private val ownPackage: String? = null
 ) {
     private val dao = db.appSessionDao()
 
@@ -113,7 +115,9 @@ class SessionRepository(
                 }
                 continue
             }
-            val r = ForegroundIntervals.resolveSession(s.packageName, s.startTime, events, now, SESSION_GRACE_MS)
+            val r = ForegroundIntervals.resolveSession(
+                s.packageName, s.startTime, events, now, SESSION_GRACE_MS, bridgePackage = ownPackage
+            )
             when {
                 r.ended -> dao.updateSession(
                     s.copy(
@@ -130,6 +134,28 @@ class SessionRepository(
             }
         }
     }
+
+    /** The ACTIVE session for [pkg] with its plan, or null if none (or a dismissal). */
+    suspend fun activePlanFor(pkg: String): ActivePlan? {
+        val s = dao.activeFor(pkg) ?: return null
+        val i = dao.intentFor(s.id) ?: return null
+        return ActivePlan(s, i)
+    }
+
+    /**
+     * How long the session's app has really been on screen so far. Null when it can't be
+     * measured (no usage access / no events) — callers must then not claim time is up.
+     */
+    fun foregroundMs(session: AppSession, now: Long = System.currentTimeMillis()): Long? {
+        val events = usage.events(session.startTime - CONTEXT_BEFORE_MS, now) ?: return null
+        val r = ForegroundIntervals.resolveSession(
+            session.packageName, session.startTime, events, now, SESSION_GRACE_MS, bridgePackage = ownPackage
+        )
+        return if (r.hasEvidence) r.foregroundMs else null
+    }
+
+    /** The user chose "Yes, keep going" when their planned time ran out. */
+    suspend fun recordTimeUpExtension(sessionId: String) = dao.addTimeUpExtension(sessionId)
 
     fun observeSince(since: Long): Flow<List<SessionWithIntent>> = dao.observeSince(since)
     fun observeRecent(limit: Int = 200): Flow<List<SessionWithIntent>> = dao.observeRecent(limit)

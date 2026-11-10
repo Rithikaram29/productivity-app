@@ -45,11 +45,11 @@ class AppContainer(private val context: Context) {
 
     val db: AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, "intentcoach.db")
         // Real migrations, never destructive: existing history survives every upgrade.
-        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
         .build()
 
     val usage = UsageRepository(context)
-    val sessions = SessionRepository(db, usage)
+    val sessions = SessionRepository(db, usage, ownPackage = context.packageName)
     val apps = AppsRepository(context, db.monitoredAppDao(), appScope)
     val focus = FocusRepository(context, db.focusSessionDao())
 

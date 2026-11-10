@@ -126,3 +126,16 @@ See README → Building. Summary: open `intentcoach/` in Android Studio, or
   (install: `adb install -r app/build/outputs/apk/debug/app-debug.apk`).
 - Release: Android Studio → Build → Generate Signed Bundle / APK (create a keystore, keep it out of git),
   or `./gradlew bundleRelease` for Play (`.aab`), then sign.
+
+## Update 2026-11-10 — "Time's up — continue?" popup
+- When a session with a planned duration has been **on screen** for that long (measured, not
+  wall-clock; checked every ~5 s), `TimeUpActivity` appears over the app: *"Your 10 minutes on
+  Instagram are up. Do you want to continue?"* with the user's stated intent.
+- **Yes, keep going** → a 5-second countdown ("Take a breath"), then back into the app. Counted in
+  `intent_response.timeUpExtensions`; the next ask comes after another block of the planned length
+  (10 → 20 → 30 min). **No, I'm done** → home screen; the session ends normally.
+- "Actually, I'm done" is available during the countdown. Back does nothing; Home leaves (re-asked
+  after 1 min if they return). "No limit" sessions and unmeasurable time are never asked.
+- Time spent on IntentCoach's own popup never ends a session and is not counted as app time.
+- DB v4 (`MIGRATION_3_4`). Device checks: plan 5 min → popup ~5 min in; Yes → countdown → back
+  in app, asked again ~10 min; No → home; Home key on popup → asked again after 1 min.

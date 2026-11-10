@@ -92,6 +92,14 @@
             android:launchMode="singleInstance"
             android:theme="@style/Theme.IntentCoach.Transparent" />
 
+        <!-- "Your time is up — continue?" Same transparent overlay setup as the check-in. -->
+        <activity
+            android:name=".overlay.TimeUpActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:theme="@style/Theme.IntentCoach.Transparent" />
+
         <!--
           foregroundServiceType is only read by API 34+. Older platforms ignore the
           attribute entirely, which is why it is safe to leave declared at minSdk 26.

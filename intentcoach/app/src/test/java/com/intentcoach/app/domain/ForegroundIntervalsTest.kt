@@ -177,6 +177,30 @@ class ForegroundIntervalsTest {
     }
 
     @Test
+    fun `time on our own popup does not end the session or count as app time`() {
+        val coach = "com.intentcoach.app"
+        // 2 minutes deciding on the "time's up" popup, then back into the app.
+        val events = listOf(
+            ev(11, RESUMED, ig), ev(100, RESUMED, coach), ev(220, RESUMED, ig), ev(300, PAUSED, ig)
+        )
+        val bridged = ForegroundIntervals.resolveSession(ig, 10 * s, events, now = 1000 * s, graceMs = grace, bridgePackage = coach)
+        assertEquals(300 * s, bridged.endTime)
+        assertEquals((89 + 80) * s, bridged.foregroundMs)
+
+        // Without the bridge, the same 2 minutes would have split it into two sessions.
+        val plain = ForegroundIntervals.resolveSession(ig, 10 * s, events, now = 1000 * s, graceMs = grace)
+        assertEquals(100 * s, plain.endTime)
+    }
+
+    @Test
+    fun `still on our popup right now keeps the session open`() {
+        val coach = "com.intentcoach.app"
+        val events = listOf(ev(11, RESUMED, ig), ev(100, RESUMED, coach))
+        val r = ForegroundIntervals.resolveSession(ig, 10 * s, events, now = 400 * s, graceMs = grace, bridgePackage = coach)
+        assertFalse(r.ended)
+    }
+
+    @Test
     fun `a shutdown ending the session marks it interrupted`() {
         val events = listOf(ev(11, RESUMED, ig), ev(90, SHUTDOWN), ev(200, STARTUP))
         val r = ForegroundIntervals.resolveSession(ig, 10 * s, events, now = 400 * s, graceMs = grace)

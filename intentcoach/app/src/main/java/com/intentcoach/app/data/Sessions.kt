@@ -93,8 +93,16 @@ data class IntentResponse(
     val notes: String = "",
     /** The user waved the reflection card away. They can still reflect from history. */
     val reflectionDismissed: Boolean = false,
-    val createdAt: Long
+    val createdAt: Long,
+    /**
+     * How many times the user answered "Yes, keep going" when their planned time ran out.
+     * A fact, not a failure count. Added in DB v4.
+     */
+    val timeUpExtensions: Int = 0
 )
+
+/** An ACTIVE session together with what the user planned for it. */
+data class ActivePlan(val session: AppSession, val intent: IntentResponse)
 
 /** A session with its answers, as the screens want it. [intent] is null for dismissals. */
 data class SessionWithIntent(
@@ -170,4 +178,11 @@ interface AppSessionDao {
 
     @Query("UPDATE intent_response SET reflectionDismissed = 1 WHERE sessionId = :sessionId")
     suspend fun dismissReflection(sessionId: String)
+
+    @Query("SELECT * FROM intent_response WHERE sessionId = :sessionId LIMIT 1")
+    suspend fun intentFor(sessionId: String): IntentResponse?
+
+    // Incremented in SQL, not read-modify-write, so two quick answers can't lose a count.
+    @Query("UPDATE intent_response SET timeUpExtensions = timeUpExtensions + 1 WHERE sessionId = :sessionId")
+    suspend fun addTimeUpExtension(sessionId: String)
 }

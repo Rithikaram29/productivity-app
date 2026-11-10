@@ -59,7 +59,7 @@ class MigrationTest {
     @Test
     fun `v2 data survives the move to v3`() = runBlocking {
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
             .build()
         try {
             val sessions = db.appSessionDao().observeRecent(10).first().associateBy { it.session.id }

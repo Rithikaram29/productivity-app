@@ -63,6 +63,44 @@ class InterventionPolicyTest {
         assertEquals(PromptDecision.PROMPT, InterventionPolicy.decide(ctx(last = now + 10 * min)))
     }
 
+    // --- "time's up" popup ---
+
+    private fun timeUp(
+        planned: Int? = 10,
+        extensions: Int = 0,
+        fgMin: Long? = 10,
+        showing: Boolean = false,
+        snoozedUntil: Long = 0,
+        enabled: Boolean = true
+    ) = TimeUpPolicy.shouldAsk(enabled, planned, extensions, fgMin?.let { it * min }, showing, snoozedUntil, now)
+
+    @Test
+    fun `asks once the planned time has been on screen`() {
+        assertEquals(false, timeUp(fgMin = 9))
+        assertEquals(true, timeUp(fgMin = 10))
+    }
+
+    @Test
+    fun `each keep-going earns another block of the planned length`() {
+        assertEquals(false, timeUp(extensions = 1, fgMin = 15))
+        assertEquals(true, timeUp(extensions = 1, fgMin = 20))
+        assertEquals(30 * min, TimeUpPolicy.thresholdMs(10, 2))
+    }
+
+    @Test
+    fun `never asks for no-limit sessions or unmeasured time`() {
+        assertEquals(false, timeUp(planned = null, fgMin = 500))
+        assertEquals(false, timeUp(fgMin = null))
+    }
+
+    @Test
+    fun `respects snooze, an open prompt, and the off switch`() {
+        assertEquals(false, timeUp(snoozedUntil = now + 1))
+        assertEquals(true, timeUp(snoozedUntil = now))
+        assertEquals(false, timeUp(showing = true))
+        assertEquals(false, timeUp(enabled = false))
+    }
+
     @Test
     fun `classification uses only the user's own words`() {
         assertEquals(SessionType.INTENTIONAL, Classification.classify(IntentCategory.SOMETHING_SPECIFIC))

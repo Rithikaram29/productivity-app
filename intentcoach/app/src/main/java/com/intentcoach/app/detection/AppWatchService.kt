@@ -17,7 +17,9 @@ import com.intentcoach.app.data.Settings
 import com.intentcoach.app.domain.InterventionPolicy
 import com.intentcoach.app.domain.PromptContext
 import com.intentcoach.app.domain.PromptDecision
+import com.intentcoach.app.domain.TimeUpPolicy
 import com.intentcoach.app.overlay.InterruptActivity
+import com.intentcoach.app.overlay.TimeUpActivity
 import com.intentcoach.app.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +58,7 @@ class AppWatchService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var lastForegroundPackage: String? = null
     private var lastReconcileAt = 0L
+    private var lastTimeUpCheckAt = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -115,7 +118,11 @@ class AppWatchService : Service() {
 
         val changed = current != lastForegroundPackage
         lastForegroundPackage = current
-        if (!changed) return
+        if (!changed) {
+            // Same app still in front: is its planned time up?
+            maybeAskTimeUp(current, now)
+            return
+        }
         if (current !in c.apps.monitoredPackages.value) return
 
         // Close anything that has really ended before deciding, so returning to an app
@@ -138,6 +145,36 @@ class AppWatchService : Service() {
         if (decision == PromptDecision.PROMPT) {
             // startActivity from the main thread, as the framework expects.
             withContext(Dispatchers.Main) { launchInterrupt(current) }
+        }
+    }
+
+    /**
+     * "Your time is up — continue?" Checked at most every TIME_UP_CHECK_MS: measuring means
+     * re-reading the session's usage events, too much work for every 800 ms poll. So the
+     * popup lands within ~5 s of the planned time, measured as real on-screen time.
+     */
+    private suspend fun maybeAskTimeUp(pkg: String, now: Long) {
+        if (now - lastTimeUpCheckAt < TIME_UP_CHECK_MS) return
+        lastTimeUpCheckAt = now
+        val c = container
+        val plan = c.sessions.activePlanFor(pkg) ?: return
+        val planned = plan.intent.plannedDurationMin ?: return // "No limit": never asked
+        val ask = TimeUpPolicy.shouldAsk(
+            enabled = Settings.isEnabled(this) && Settings.isAutoIntervention(this),
+            plannedMinutes = planned,
+            extensions = plan.intent.timeUpExtensions,
+            foregroundMs = c.sessions.foregroundMs(plan.session, now),
+            promptShowing = InterruptActivity.isShowing || TimeUpActivity.isShowing,
+            snoozedUntil = TimeUpActivity.snoozedUntil(plan.session.id),
+            now = now
+        )
+        if (!ask) return
+        val i = plan.intent
+        val intentText = i.intentCategory.label + if (i.description.isNotBlank()) " — ${i.description}" else ""
+        withContext(Dispatchers.Main) {
+            startActivity(
+                TimeUpActivity.intent(this@AppWatchService, plan.session.id, pkg, planned, i.timeUpExtensions, intentText)
+            )
         }
     }
 
@@ -170,6 +207,7 @@ class AppWatchService : Service() {
         private const val POLL_INTERVAL_MS = 800L
         private const val LOOKBACK_MS = 3_000L
         private const val RECONCILE_EVERY_MS = 15_000L
+        private const val TIME_UP_CHECK_MS = 5_000L
         private const val CHANNEL_ID = "intent_coach_service"
         private const val NOTIF_ID = 1
 

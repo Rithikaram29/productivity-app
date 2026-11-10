@@ -46,6 +46,39 @@ object InterventionPolicy {
 }
 
 /**
+ * When to show "Your time is up — do you want to continue?".
+ *
+ * Asked once the app has really been on screen (measured foreground time, not wall-clock)
+ * for the planned minutes. Each "Yes, keep going" earns another block of the same length
+ * before the next ask: a 10-minute plan asks at 10, 20, 30… Sessions with "No limit" are
+ * never asked. Going over is never recorded as a failure — only the count of extensions.
+ */
+object TimeUpPolicy {
+    fun thresholdMs(plannedMinutes: Int, extensions: Int): Long =
+        plannedMinutes * 60_000L * (extensions + 1)
+
+    fun shouldAsk(
+        enabled: Boolean,
+        plannedMinutes: Int?,
+        extensions: Int,
+        foregroundMs: Long?,
+        promptShowing: Boolean,
+        snoozedUntil: Long,
+        now: Long
+    ): Boolean =
+        enabled &&
+            plannedMinutes != null && plannedMinutes > 0 &&
+            // Unknown time means we can't honestly say it's up.
+            foregroundMs != null &&
+            !promptShowing &&
+            now >= snoozedUntil &&
+            foregroundMs >= thresholdMs(plannedMinutes, extensions)
+}
+
+/** The "count till 5" after choosing to continue: a breath, not a wall. */
+const val CONTINUE_COUNTDOWN_SECONDS = 5
+
+/**
  * Intent → classification. A user who names any purpose — including "Taking a break" —
  * is using the app intentionally. "Just checking" and "I'm bored" are their own honest
  * words for unplanned use. Nothing the user did not say is ever classified as unplanned.

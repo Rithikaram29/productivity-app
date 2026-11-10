@@ -105,16 +105,27 @@ object ForegroundIntervals {
      * The session keeps going across short gaps (an incoming call, a quick screen-off,
      * switching activities inside the app) as long as the user returns within [graceMs].
      * The first gap longer than that ends it; anything after belongs to a later session.
+     *
+     * [bridgePackage] is IntentCoach itself: time spent on our own screens (e.g. the
+     * "time's up" popup) inside a gap does not count against the grace period — answering
+     * a question we asked must never end the user's session. It is not counted as usage
+     * of [pkg] either.
      */
     fun resolveSession(
         pkg: String,
         sessionStart: Long,
         events: List<UsageEvent>,
         now: Long,
-        graceMs: Long
+        graceMs: Long,
+        bridgePackage: String? = null
     ): SessionResolution {
-        val intervals = compute(events, sessionStart, now, stillForegroundAtEnd = true)
-            .filter { it.packageName == pkg }
+        val all = compute(events, sessionStart, now, stillForegroundAtEnd = true)
+        val intervals = all.filter { it.packageName == pkg }
+        val own = if (bridgePackage == null) emptyList() else all.filter { it.packageName == bridgePackage }
+
+        // A gap minus whatever part of it the user spent on our own screens.
+        fun effectiveGap(from: Long, to: Long): Long =
+            (to - from) - own.sumOf { (minOf(it.end, to) - maxOf(it.start, from)).coerceAtLeast(0L) }
 
         if (intervals.isEmpty()) {
             // No trace of the app since the check-in. Either it never opened, or the events
@@ -132,13 +143,13 @@ object ForegroundIntervals {
         var total = intervals.first().durationMs
         for (i in 1 until intervals.size) {
             val iv = intervals[i]
-            if (iv.start - end > graceMs) break
+            if (effectiveGap(end, iv.start) > graceMs) break
             total += iv.durationMs
             end = iv.end
         }
 
         val stillOpen = end >= now
-        val ended = !stillOpen && now - end > graceMs
+        val ended = !stillOpen && effectiveGap(end, now) > graceMs
         val interrupted = ended && events.any {
             (it.kind == UsageEvent.Kind.SHUTDOWN || it.kind == UsageEvent.Kind.STARTUP) &&
                 it.timestamp >= end && it.timestamp <= end + graceMs

@@ -13,6 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *  - v2: + focus_session
  *  - v3: intent_log is replaced by app_session + intent_response, + monitored_app,
  *        focus_session gains `category`. Old intent_log rows are converted, not dropped.
+ *  - v4: intent_response gains `timeUpExtensions` (the "time's up — continue?" popup).
  *
  * Schemas are exported to app/schemas/ (see the ksp block in app/build.gradle.kts), so
  * future migrations can be written and tested against the real generated schema.
@@ -24,7 +25,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AppSession::class,
         IntentResponse::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -154,6 +155,15 @@ abstract class AppDatabase : RoomDatabase() {
                 // Existing focus sessions predate categories; WORK is the neutral default.
                 db.execSQL(
                     "ALTER TABLE `focus_session` ADD COLUMN `category` TEXT NOT NULL DEFAULT 'WORK'"
+                )
+            }
+        }
+
+        /** v3 -> v4: count of "keep going" answers. Existing sessions start at 0. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `intent_response` ADD COLUMN `timeUpExtensions` INTEGER NOT NULL DEFAULT 0"
                 )
             }
         }
