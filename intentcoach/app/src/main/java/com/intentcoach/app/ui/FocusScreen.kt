@@ -197,7 +197,7 @@ private fun Running(focus: ActiveFocus, onPause: () -> Unit, onResume: () -> Uni
             Text(if (focus.isPaused) "Paused" else "of ${focus.plannedMinutes} min", color = Muted, fontSize = 13.sp)
         }
     }
-    CompanionRoom(mood = CompanionMood.CONTENT, time = TimeOfDayClock.now(), height = 130.dp)
+    CompanionRoom(mood = CompanionMood.CONTENT, time = TimeOfDayClock.now(), working = !focus.isPaused, height = 190.dp)
     if (focus.isPaused) PrimaryButton("Resume", onClick = onResume) else SecondaryButton("Pause", onClick = onPause)
     TextButton(onClick = onEnd, modifier = Modifier.fillMaxWidth()) {
         Text("End session now", color = Muted)
